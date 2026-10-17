@@ -8,6 +8,42 @@ It compares LLM agents (single agent, multi-agent critic loop, hybrid), embeddin
 retrieval and System One decision models (Kev, Laya, Jev) for curating ordered
 learning paths (*trilhas formativas*) on the PlaforEdu platform.
 
+## Results
+66 competencies, 17 configurations, 2574 paths. Scores are 1 to 5 from the
+claude-opus-5-5 judge (the gpt-4o judge is still being completed, so numbers may
+change slightly), averaged over runs per competency, with bootstrap 95% CI.
+
+| Family | System | Overall [95% CI] | Length | Invalid IDs | Cost/path (USD) |
+|---|---|---|---|---|---|
+| Baseline | Naive (all candidates) | 2.17 [2.00, 2.33] | 15.0 | 0.0% | 0 |
+| Retrieval | k=3 | 2.92 [2.73, 3.11] | 2.9 | 0.0% | 0 |
+| | k=5 | 2.95 [2.77, 3.14] | 4.6 | 0.0% | 0 |
+| | k=10 | 2.62 [2.47, 2.76] | 8.0 | 0.0% | 0 |
+| System One | Laya, top 5 | 2.26 [2.09, 2.42] | 4.6 | 0.0% | 0 (local) |
+| | Kev-4B, threshold | 2.89 [2.70, 3.09] | 8.8 | 0.0% | 0 (local) |
+| | Kev-4B, top 5 | 3.03 [2.82, 3.26] | 4.6 | 0.0% | 0 (local) |
+| gpt-4o-mini | Single agent | 2.79 [2.62, 2.95] | 7.7 | 0.5% | 0.0006 |
+| | Single agent, max 5 | 3.11 [2.91, 3.29] | 4.6 | 0.5% | 0.0005 |
+| | Multi-agent critic loop | 2.80 [2.64, 2.96] | 7.6 | 3.3% | 0.0009 |
+| | Multi-agent, guarded | 2.83 [2.66, 2.99] | 7.5 | 0.0% | 0.0009 |
+| | Hybrid retrieve, generate, verify | 2.87 [2.69, 3.05] | 7.1 | 0.0% | 0.0005 |
+| gpt-5.4-mini, no reasoning | Single agent | 3.25 [3.09, 3.40] | 5.9 | 0.9% | 0.0037 |
+| | Multi-agent critic loop | 3.25 [3.07, 3.41] | 6.0 | 0.7% | 0.0054 |
+| gpt-5.4-mini, high reasoning | **Single agent** | **3.61 [3.43, 3.78]** | 5.2 | 0.4% | 0.0141 |
+| | Multi-agent critic loop | 3.48 [3.30, 3.66] | 5.4 | 0.8% | 0.0203 |
+
+Main findings:
+- Reasoning helps most: high reasoning beats no reasoning by +0.36 (p < 0.001).
+- The critic loop adds cost but no quality, and under high reasoning it is slightly
+  worse than a single agent (p = 0.007).
+- Capping the path at 5 courses gives +0.32; much of the judged quality is concision.
+- The ID gate (guarded and hybrid systems) removes every invalid course ID; only the
+  unguarded gpt-4o-mini critic loop fabricated courses.
+- Kev-4B with top 5 matches embedding retrieval at zero API cost; Laya is no better
+  than the naive baseline.
+
+![Quality vs. latency](papers/ieee-access/paper/figures/fig2_pareto.png)
+
 ## Layout
 - `src/db.py`: SQLite access to the course and competency catalog.
 - `src/systems.py`: all curation systems.
