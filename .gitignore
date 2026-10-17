@@ -1,3 +1,27 @@
+# data (local database and raw dumps)
 data/*.*
-notebooks/old
 *.zip
+*:Zone.Identifier
+.env
+
+# python
+__pycache__/
+*.pyc
+notebooks/old
+
+# experiment logs and side files already merged into gen_v2.jsonl
+results/*.log
+results/gen_c.jsonl
+results/gen_s1.jsonl
+# blind human evaluation: the key and the filled sheets stay private
+results/human_eval/chave_NAO_ENVIAR.csv
+results/human_eval/filled/
+
+# latex build artefacts
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.synctex.gz
+papers/**/access.pdf
