@@ -1,0 +1,372 @@
+\documentclass{ieeeaccess}
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{booktabs}
+
+\usepackage{bm}
+\makeatletter
+\AtBeginDocument{\DeclareMathVersion{bold}
+\SetSymbolFont{operators}{bold}{T1}{times}{b}{n}
+\SetSymbolFont{NewLetters}{bold}{T1}{times}{b}{it}
+\SetMathAlphabet{\mathrm}{bold}{T1}{times}{b}{n}
+\SetMathAlphabet{\mathit}{bold}{T1}{times}{b}{it}
+\SetMathAlphabet{\mathbf}{bold}{T1}{times}{b}{n}
+\SetMathAlphabet{\mathtt}{bold}{OT1}{pcr}{b}{n}
+\SetSymbolFont{symbols}{bold}{OMS}{cmsy}{b}{n}
+\renewcommand\boldmath{\@nomath\boldmath\mathversion{bold}}}
+\makeatother
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\graphicspath{{paper/figures/}{figures/}{./}}
+% Auto-generated numeric macros from src/analyze.py (\R... commands).
+\input{paper/tables/macros.tex}
+% Auto-generated numeric macros from src/analyze_v2.py (\V... commands).
+\input{paper/tables/macros_v2.tex}
+\usepackage{multirow}
+
+%Your document starts from here ___________________________________________________
+\begin{document}
+\history{Date of publication xxxx 00, 0000, date of current version xxxx 00, 0000.}
+\doi{10.1109/ACCESS.2024.0429000}
+
+\title{Fast, Slow, or Agentic? System One Decision Models, Reasoning LLMs, and Self-Reflective Multi-Agent Curation of Learning Paths for Public-Sector Training}
+\author{\uppercase{Silvan Ferreira}\authorrefmark{1},
+\uppercase{Tha\'{\i}s Medeiros}\authorrefmark{2}, \IEEEmembership{Graduate Student Member, IEEE},
+\uppercase{Morsinaldo Medeiros}\authorrefmark{2}, \IEEEmembership{Graduate Student Member, IEEE},
+\uppercase{Matheus Andrade}\authorrefmark{2},
+\uppercase{Fabiane B. da Silva}\authorrefmark{3},
+\uppercase{Raymundo C. M. Ferreira Filho}\authorrefmark{4},
+\uppercase{Ot\'avio A. de L. J\'unior}\authorrefmark{5},
+\uppercase{Thiago M. Barros}\authorrefmark{6},
+and \uppercase{Ivanovitch Silva}\authorrefmark{2}, \IEEEmembership{Senior Member, IEEE}}
+
+\address[1]{Metropolis Digital Institute (IMD), Federal University of Rio Grande do Norte (UFRN), Natal, RN, Brazil (e-mail: silvan@imd.ufrn.br)}
+\address[2]{Graduate Program in Electrical and Computer Engineering (PPgEEC), Federal University of Rio Grande do Norte (UFRN), Natal, RN, Brazil}
+\address[3]{Federal University of Pelotas (UFPel), Pelotas, RS, Brazil}
+\address[4]{Federal Institute of Education, Science and Technology Sul-rio-grandense (IFSul), Pelotas, RS, Brazil}
+\address[5]{Federal Institute of Education, Science and Technology of Cear\'a (IFCE), Maracana\'u, CE, Brazil}
+\address[6]{Federal Institute of Education, Science and Technology of Rio Grande do Norte (IFRN), Natal, RN, Brazil}
+\tfootnote{This work was supported in part by the participating institutions.}
+
+\markboth
+{Ferreira \headeretal: Fast, Slow, or Agentic? Curation of Learning Paths}
+{Ferreira \headeretal: Fast, Slow, or Agentic? Curation of Learning Paths}
+
+\corresp{Corresponding author: Silvan Ferreira (e-mail: silvan@imd.ufrn.br).}
+
+
+
+\begin{abstract}
+Curating learning paths, ordered course sequences that develop a target competency, is a manual bottleneck on public-sector training platforms. Three families of AI systems now compete for this task: cheap non-generative selectors, such as embedding retrieval and the recent \emph{System One} decision models that return typed judgments in a single forward pass; generative large language models (LLMs) with or without explicit reasoning; and agentic workflows in which a self-reflective critic triggers iterative refinement. We compare all three on PlaforEdu, the training platform of the Brazilian federal network of vocational and technological education, with \RnCourses\ courses and \RnComp\ evaluable competencies. The study covers \VnVariants\ system configurations, among them two open-source System One models, Kev-4B and Laya, a reasoning model run with reasoning disabled and at high effort, a guarded multi-agent workflow and a hybrid retrieve-generate-verify design, for a total of \VnPaths\ generated paths over up to three runs. Paths are scored by two LLM judges from different model families with a reason-first, pool-aware rubric and verified programmatically. Explicit reasoning is the only factor that clearly improves quality: the same model scores \VovSingleHigh\ out of 5 with high reasoning against \VovSingleNone\ without it ($p_{\mathrm{Holm}}\VpSingleNoneSingleHigh$), mainly through better pedagogical ordering. The self-reflective critic loop never helps and, under high reasoning, slightly hurts; programmatic guardrails remove every invalid course identifier at no quality cost. The best System One model matches embedding retrieval at a fraction of the cost of an LLM, whereas a multilingual encoder fails on Portuguese. Path length confounds every comparison, and the two judges disagree on individual paths yet rank systems almost identically (Spearman $\rho=\VrhoSysJudges$). We distill these results into deployment and evaluation guidance for educational curation.
+\end{abstract}
+
+\begin{keywords}
+Artificial intelligence in education, educational curation, large language models, learning paths, LLM-as-a-judge, multi-agent systems, reasoning models, retrieval, self-reflection, System One decision models.
+\end{keywords}
+
+\titlepgskip=-21pt
+
+\maketitle
+
+\section{Introduction}
+\label{sec:introduction}
+\PARstart{T}{he} continuous education of civil servants is vital for an efficient and specialized public administration. Platforms dedicated to this purpose host hundreds or thousands of courses mapped to institutional competencies, and structured learning paths, referred to in Brazilian public-sector platforms as \textit{trilhas formativas}, are produced through extensive manual curation \cite{b_santos2025plafor,b_ribeiro2022digcompedu}. Subject-matter experts must interpret the competency objective, browse the catalog, assess each syllabus, and sequence the courses to foster progressive skill acquisition. The process scales poorly as repositories grow, and producing paths on demand for newly identified institutional needs imposes a substantial operational burden \cite{b_llmedu}. Public organizations in Brazil and elsewhere are adopting artificial intelligence to relieve such bottlenecks, but adoption is uneven and depends on technical capacity \cite{b_wirtz2019ai,b_zuiderwijk2021gov,b_ribeiro2025rap}, which makes the cost and reliability of the chosen technique as important as its peak quality.
+
+Large language models (LLMs) \cite{b_gpt3} open new possibilities for automating tasks that require semantic matching and reasoning, and a growing body of work applies them to education \cite{b_survey_edu,b_lpp,b_mittal2026course}. For curation, at least three families of systems are now plausible. The first is \emph{non-generative selection}: embedding retrieval \cite{b_rag}, and the \emph{System One} decision models introduced in 2026 \cite{b_typesafe2026jev,b_palmer2026kev,b_laya2026}, which answer typed questions such as yes/no, multiple choice or ordinal scores in a single forward pass without generating text, and therefore cannot invent catalog items. The second is \emph{generative selection} by an LLM, which now comes in two operating modes: fast, intuitive generation, and deliberate generation with explicit reasoning tokens, a distinction often framed through Kahneman's System 1 and System 2 \cite{b_kahneman2011,b_zhang2026sys1sys2,b_ziabari2025spectrum}. The third is \emph{agentic} curation, in which a generator proposes a path and a critic reviews it, forcing regeneration when constraints are violated, following the self-reflection paradigm \cite{b_reflexion,b_selfrefine}.
+
+These families make different promises. Agentic designs are intuitively appealing because a single LLM call over a large candidate pool may select arbitrarily short, poorly ordered or loosely related sequences, and may fabricate items that are not in the catalog \cite{b_halluc}. Reasoning models promise to plan such sequences more carefully, at higher cost and latency. System One models promise the opposite trade-off: decisions in milliseconds, at negligible cost, without hallucinated identifiers. Yet recent work warns that agentic systems are often reported without comparison to simple, cheap baselines \cite{b_agents_matter}, that LLM self-correction without external feedback rarely improves outputs \cite{b_selfcorrect,b_kamoi2024selfcorrect}, that multi-agent systems fail in systematic ways \cite{b_cemri2025mas}, and that explicit reasoning helps mainly on mathematical and symbolic tasks \cite{b_sprague2025cot} and can lead to overthinking \cite{b_chen2025overthinking}. Which of these promises holds for curating learning paths from a real catalog is, to our knowledge, an open empirical question.
+
+This paper answers it for one real platform with five research questions:
+\begin{itemize}
+\item \textbf{RQ1:} Does an explicit self-reflective critic loop improve LLM-curated paths over a single generator call, and do programmatic guardrails remove its failure modes?
+\item \textbf{RQ2:} Does explicit reasoning, that is System-2 operation of the same model, improve curation, and does it change the value of the critic loop?
+\item \textbf{RQ3:} Can non-generative System One decision models curate paths competitively with retrieval and with LLMs?
+\item \textbf{RQ4:} How much of the apparent quality differences between systems is explained by path length?
+\item \textbf{RQ5:} How reliable is LLM-as-a-judge evaluation for this task, across judge families and rubric designs?
+\end{itemize}
+
+Our contributions are:
+\begin{enumerate}
+\item A graph-based multi-agent curation architecture, formalized as a directed cyclic state machine, together with two programmatic guardrails, a pool-aware length constraint and an identifier-validation gate, and a hybrid retrieve-generate-verify variant (Section~\ref{sec:methodology}).
+\item The first application, to our knowledge, of System One decision models to educational curation, through a deterministic pipeline that turns per-course typed decisions into an ordered path with no generated identifiers (Section~\ref{subsec:system_one}).
+\item A large controlled comparison of \VnVariants\ configurations spanning retrieval, System One models, a non-reasoning LLM, a reasoning LLM with reasoning off and on, and agentic workflows, on all \RnComp\ evaluable competencies of PlaforEdu, with repeated runs, two cross-family judges, programmatic verification, and planned, multiplicity-corrected comparisons (Sections~\ref{sec:setup} and~\ref{sec:results}).
+\item Evidence that reasoning, not agentic structure, drives quality; that the critic loop is redundant or harmful; that path length confounds comparisons; and that judge disagreement on individual paths coexists with near-perfect agreement on system rankings, distilled into deployment and evaluation guidance (Section~\ref{sec:discussion}).
+\end{enumerate}
+
+This article substantially extends our preliminary study of the multi-agent workflow against three baselines with a single judge and a single run, whose diagnostics, a collapsed judge rubric and a decoding noise floor comparable to the between-system differences, motivated the redesigned protocol reported here. The remainder of the paper is organized as follows. Section~\ref{sec:related} reviews related work. Section~\ref{sec:methodology} formalizes the problem and details the systems. Section~\ref{sec:setup} describes the experimental setup, Section~\ref{sec:results} reports the results, Section~\ref{sec:discussion} discusses their implications and threats to validity, and Section~\ref{sec:conclusion} concludes.
+
+\section{Related Work}
+\label{sec:related}
+
+\subsection{Learning-Path and Course Recommendation}
+Learning-path recommendation has a long history in adaptive education \cite{b_lp_survey,b_bin2024study}. Knowledge-graph methods derive paths from typed relations among learning objects \cite{b_shi2020kg}, prerequisite-mining methods learn the ordering constraints among course concepts \cite{b_liu2020prereq}, and knowledge-diagnosis methods adapt paths to the learner's mastery \cite{b_meng2021ldlp}. Reinforcement learning casts path construction as a sequential decision problem, either directly \cite{b_amin2023rl} or with graph-guided hierarchical policies towards a learning goal \cite{b_li2023gehrl}, and heterogeneous graph models capture student--course--concept interactions for course recommendation \cite{b_wang2024hgcr}. Closest to the institutional setting studied here, Siren \emph{et al.}~\cite{b_siren2022oer} survey the automatic creation of learning paths by selecting and ordering open educational resources. These approaches typically require interaction logs, prerequisite annotations or learner models that public-sector catalogs rarely provide, which is precisely the gap that LLM-based curation from textual descriptions aims to fill.
+
+\subsection{LLMs and Retrieval for Educational Recommendation}
+LLMs are now used across educational tasks, from tutoring to content generation \cite{b_survey_edu,b_llmedu}, and a recent survey documents the shift of course recommenders towards LLMs between 2022 and 2025 \cite{b_mittal2026course}. Wang \emph{et al.}~\cite{b_lpp} frame personalized learning-path planning as a prompting problem, and retrieval-augmented generation \cite{b_rag}, surveyed for education by Li \emph{et al.}~\cite{b_li2025ragedu}, grounds such systems in catalog data, as RAMO does for MOOC recommendation \cite{b_ramo}. These works target learner-facing personalization or single-shot recommendation. We address institution-facing \emph{curation}, that is selecting and ordering courses from a governed catalog to satisfy a formally defined competency, and we treat retrieval not only as a component but as a baseline that more complex systems must beat.
+
+\subsection{Multi-Agent LLM Systems and Self-Reflection}
+Decomposing a task across specialized, communicating agents is an established paradigm for LLM applications \cite{b_masla}, increasingly applied in education \cite{b_yang2025agentsedu}: EduPlanner pairs an evaluator and an optimizer for instructional design \cite{b_eduplanner}, and multi-agent pipelines generate personalized lesson plans \cite{b_nguyen2026mas}. Reasoning-and-acting \cite{b_react}, Reflexion \cite{b_reflexion} and Self-Refine \cite{b_selfrefine} show that LLMs can improve outputs through verbal feedback without parameter updates, and our critic node instantiates this principle on an explicit LangGraph state graph \cite{b_langgraph}. The evidence for such loops is, however, mixed. Intrinsic self-correction without external ground truth often fails \cite{b_selfcorrect}, and a critical survey concludes that self-correction works mainly when reliable external feedback is available \cite{b_kamoi2024selfcorrect}. Multi-agent systems exhibit recurrent failure modes in specification, inter-agent alignment and verification \cite{b_cemri2025mas}, and agent benchmarks routinely omit cost-controlled comparisons with simple baselines \cite{b_agents_matter}. Our design tests these concerns directly, including whether cheap programmatic verification can replace an LLM critic.
+
+\subsection{Fast and Slow: Reasoning Models and System One Decision Models}
+Reasoning LLMs spend additional inference-time computation on explicit chains of thought before answering, as in OpenAI o1 \cite{b_openai2024o1} and DeepSeek-R1 \cite{b_guo2025deepseekr1}, and are commonly described as moving LLMs from intuitive System-1 to deliberate System-2 processing \cite{b_kahneman2011,b_zhang2026sys1sys2}. The benefit is task dependent: chain-of-thought helps mainly on math and symbolic reasoning \cite{b_sprague2025cot}, reasoning models can overthink simple problems \cite{b_chen2025overthinking}, and models aligned to System-1 behaviour match or beat System-2 ones on several commonsense tasks \cite{b_ziabari2025spectrum}. Current API models expose the reasoning effort as a parameter, which makes it possible to switch reasoning off and on for the \emph{same} model, the controlled contrast we exploit.
+
+At the other extreme, \emph{System One decision models} were introduced in 2026 with TypeSafe's Jev \cite{b_typesafe2026jev,b_typesafe2026docs}: models that take an unstructured state and a set of typed questions and return calibrated choices, scores or yes/no probabilities in one parallel pass, without generating text. Their lineage goes back to zero-shot classification through entailment \cite{b_yin2019zeroshot} and to span-scoring encoders such as GLiNER \cite{b_zaratiana2024gliner}. Jev is closed and hosted, but open-source models implementing the same wire protocol appeared within weeks: Kev \cite{b_palmer2026kev} attaches a pointer head and a low-rank adapter to Qwen base models, and Laya \cite{b_laya2026} trains non-autoregressive heads on the ModernBERT and multilingual mmBERT encoders \cite{b_warner2025modernbert,b_marone2025mmbert}. To our knowledge, no study has evaluated these models on an educational task or against generative curation.
+
+\subsection{LLM-as-a-Judge Evaluation}
+Using a strong LLM to score open-ended outputs correlates with human preference and is now a standard evaluation tool \cite{b_judge,b_judge_survey}, but judges show position, verbosity and self-enhancement biases \cite{b_judge,b_length_bias}, favour their own generations \cite{b_panickssery2024selfpref}, are inconsistent across repeated or rephrased prompts \cite{b_judge_inconsistent}, and agree with humans to a degree that varies widely across tasks \cite{b_bavaresco2025judges}. Rubric-based judges that reason before scoring, as in G-Eval \cite{b_liu2023geval}, and panels of judges from different model families \cite{b_verga2024juries} have been proposed as mitigations. We adopt both, measure inter-judge agreement with Krippendorff's $\alpha$ \cite{b_hayes2007alpha} and weighted $\kappa$ \cite{b_cohen1968kappa}, and pair the judges with programmatic verification that requires no model.
+
+\section{Problem Formulation and Systems}
+\label{sec:methodology}
+
+\subsection{Problem Formulation}
+\label{subsec:formulation}
+Let $\mathcal{C}$ be the catalog of courses and $\mathcal{K}$ the set of competencies. Each competency $k \in \mathcal{K}$ has a textual descriptor $o_k$ that expresses the learning objective of its trilha, and a candidate set $A_k \subseteq \mathcal{C}$ of courses associated with $k$ in the catalog. A \emph{learning path} for $k$ is an ordered sequence $P_k = \langle c_1, c_2, \dots, c_m \rangle$ with $c_i \in A_k$ and $c_i \neq c_j$ for $i \neq j$. The curation task is to produce $P_k$ that is relevant to $o_k$, covers the competency with the courses available, avoids redundancy, is pedagogically coherent in its ordering, and satisfies structural constraints, here a minimum length of three courses where the pool allows it. Because the ideal path is not uniquely defined and quality is inherently pedagogical, we evaluate along these dimensions rather than against a single gold reference. Any element $c_i \notin A_k$ is an \emph{invalid identifier}, an error that a deployed system must never surface to a learner.
+
+\subsection{Data Layer}
+\label{subsec:data_layer}
+The knowledge base is derived from relational datasets exported from the production environment of PlaforEdu. It comprises three entities, courses, competencies and a bridge table mapping courses to competencies, as shown in Figure~\ref{fig:schema}. Raw CSV data is sanitized, retaining identifiers, names and textual descriptions, and loaded into a local SQLite repository. A Python data-access object, \texttt{PlaforEduDB}, exposes methods to query a competency descriptor and retrieve its candidate courses, and is shared by every system so that all of them see exactly the same $o_k$ and $A_k$.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.85\textwidth]{paper/figures/fig_data_schema.png}
+\caption{Entity-relationship diagram of the curation database, with row counts for the exported PlaforEdu catalog.}
+\label{fig:schema}
+\end{figure*}
+
+\subsection{Agentic Workflow}
+\label{subsec:agentic_layer}
+We frame agentic curation as a directed cyclic graph compiled with LangGraph \cite{b_langgraph}, which guarantees structured, inspectable transitions between agents (Figure~\ref{fig:graph_flow}). The execution state carries $o_k$, the competency identifier, $A_k$, the current path $P_k$, and the critic's verdict and feedback.
+
+\subsubsection{Context Node}
+The entry node queries SQLite for the descriptor of the target competency and all candidate courses $A_k$.
+
+\subsubsection{Generator Node}
+Acting as an expert curator, this node receives $o_k$ and $A_k$, each course with its identifier, name and description, and outputs a sequence of selected courses with a pedagogical justification for each. Structured decoding with Pydantic schemas \cite{b_pydantic} guarantees machine-parseable output, but not that the identifiers it contains exist.
+
+\subsubsection{Critic Node}
+An independent critic reviews the path against two rules: the sequence must align with $o_k$, and it must contain at least three courses. It returns a binary verdict, ``Bom'' (good) or ``Ruim'' (bad), with natural-language feedback, following the self-reflection paradigm \cite{b_reflexion,b_selfrefine}.
+
+\subsubsection{Routing}
+If the verdict is ``Ruim'' and the budget is not exhausted, the graph routes back to the generator, injecting the feedback into its prompt; otherwise it terminates. We cap the workflow at three generator calls per competency.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.82\linewidth]{paper/figures/fig_langgraph_flow.png}
+\caption{State graph of the multi-agent curation workflow. Nodes are LLM agents and data extractors, and the red edge is the self-reflective refinement loop triggered by a ``Ruim'' verdict.}
+\label{fig:graph_flow}
+\end{figure}
+
+\subsection{Guardrails and the Hybrid Design}
+\label{subsec:guardrails}
+Our preliminary study found that the critic loop, faced with pools smaller than its three-course rule, drove the generator to invent courses. We therefore define two programmatic guardrails. The \emph{pool-aware constraint} replaces the critic's minimum length by $\min(3,|A_k|)$. The \emph{identifier-validation gate} runs after every generator call: an identifier in $A_k$ is kept, an invalid identifier whose course name matches a course in $A_k$ is repaired to that course, duplicates are removed, and anything else is dropped. The \emph{guarded} multi-agent system applies both inside the graph.
+
+The \emph{hybrid retrieve-generate-verify} system replaces the critic loop entirely. Embedding retrieval (Section~\ref{subsec:retrieval}) shortlists the ten courses most similar to $o_k$; a single generator call selects, orders and justifies courses from the shortlist only; and the validation gate filters the result. If fewer than $\min(3,|A_k|)$ courses survive, the path is padded with the most similar remaining shortlisted courses, never with generated ones.
+
+\subsection{Retrieval Baselines}
+\label{subsec:retrieval}
+The retrieval systems embed $o_k$ and each course, name and description, with \texttt{text-embedding-3-small} \cite{b_embed} and return the $k$ most cosine-similar courses in descending order of similarity, with $k \in \{3,5,10\}$. The \emph{naive} baseline returns all of $A_k$ in catalog order and represents an uncurated catalog dump.
+
+\subsection{System One Curation}
+\label{subsec:system_one}
+System One models cannot produce a sequence directly, so we decompose curation into per-course typed decisions and assemble the path deterministically (Figure~\ref{fig:system_one}). For every candidate $c \in A_k$, the state is the objective $o_k$ together with the course name and description, and the model answers two questions in one forward pass, both posed in Portuguese: a \emph{noul} question, whether the course contributes directly to the competency, which yields a probability $p_c$; and a three-level \emph{score} question, whether the course belongs at the start, middle or end of a learning path, which yields an expected level $\ell_c \in [0,2]$. The \emph{threshold} variant keeps the courses with $p_c \geq 0.5$, pads to $\min(3,|A_k|)$ with the next most probable courses, and orders the result by $\ell_c$, breaking ties by $p_c$. The \emph{top-5} variant keeps the five most probable courses, which matches the length of retrieval with $k{=}5$ and isolates selection quality from length. Because every selected element is a catalog item, the pipeline cannot produce an invalid identifier.
+
+Our client speaks the \texttt{/v1/systemone} wire protocol, so the same code drives the hosted Jev and the open-source servers. Jev was available only through a waitlist when the experiments were run, so we evaluate the two open models: \textbf{Kev-4B} \cite{b_palmer2026kev}, a Qwen3.5-4B base model with a rank-16 adapter and a pointer head, released under Apache-2.0 and reported within four points of Jev on new-source decisions, and \textbf{Laya} \cite{b_laya2026}, whose multilingual checkpoint uses the 322M-parameter mmBERT encoder \cite{b_marone2025mmbert} and covers more than 100 languages. We use both zero-shot, with their shipped calibration.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.85\textwidth]{paper/figures/fig_system_one.png}
+\caption{System One curation. Each candidate course is scored independently by a non-autoregressive decision model with two typed questions, and the path is assembled by a fixed rule. No identifier is ever generated.}
+\label{fig:system_one}
+\end{figure*}
+
+\section{Experimental Setup}
+\label{sec:setup}
+
+\subsection{Dataset}
+We use the PlaforEdu catalog, the training platform of the Plan for Continuing Education of the servants of the Brazilian Federal Network of Professional, Scientific and Technological Education \cite{b_santos2025plafor}. It contains \RnCourses\ courses, \RnCompTotal\ competencies of which \RnCompCand\ have at least one candidate course, and \RnLinks\ course-competency associations. The number of candidates per competency is highly skewed, with a median of \RmedCand\ and a maximum of \RmaxCand\ (Figure~\ref{fig:dist}), so some competencies offer a rich pool to curate while a few offer fewer courses than the minimum length. We evaluate on the \RnComp\ competencies with candidate courses that the preliminary study processed, and every system is run on all of them so that comparisons are paired.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{paper/figures/fig_courses_per_comp.png}
+\caption{Distribution of candidate courses per competency in PlaforEdu.}
+\label{fig:dist}
+\end{figure}
+
+\subsection{Systems Compared}
+Table~\ref{tab:systems} lists the \VnVariants\ configurations. The LLM systems use one of three generators: \texttt{gpt-4o-mini}, the generator of the preliminary study, at temperature 0; and \texttt{gpt-5.4-mini}, a reasoning model, either with reasoning disabled (effort \texttt{none}), which we call \emph{System-1 operation}, or at effort \texttt{high}, which we call \emph{System-2 operation}. Critic and generator share the model within a configuration. The \emph{single agent} is the generator node alone, that is the multi-agent system with the critic ablated, and \emph{single agent, max.\ 5} adds the instruction to select at most five courses, a length control.
+
+\begin{table}[t]
+\centering
+\caption{The compared system configurations. ``LLM calls'' counts generator and critic calls per path; ``Gen.\ IDs'' indicates whether the system emits identifiers that may be invalid.}
+\label{tab:systems}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llcc}
+\toprule
+System & Selector & LLM calls & Gen.\ IDs \\
+\midrule
+Naive dump & none & 0 & no \\
+Retrieval, $k \in \{3,5,10\}$ & embeddings & 0 & no \\
+Laya / Kev-4B, threshold & System One & 0 & no \\
+Laya / Kev-4B, top-5 & System One & 0 & no \\
+\midrule
+Single agent & LLM & 1 & yes \\
+Single agent, max.\ 5 & LLM & 1 & yes \\
+Multi-agent (critic loop) & LLM & 2--6 & yes \\
+Multi-agent, guarded & LLM + gate & 2--6 & gated \\
+Hybrid retrieve-generate-verify & emb.\ + LLM + gate & 1 & gated \\
+\bottomrule
+\multicolumn{4}{l}{\parbox{0.95\linewidth}{\vspace{2pt}LLM systems run with \texttt{gpt-4o-mini}; single and multi-agent also with \texttt{gpt-5.4-mini} at reasoning effort \texttt{none} and \texttt{high}.}}
+\end{tabular}
+\end{table}
+
+\subsection{Evaluation Protocol}
+\label{subsec:protocol}
+\subsubsection{Programmatic Metrics}
+Computed without any model: path length $m$, the selection ratio $m/|A_k|$, the minimum-length satisfaction rate, duplicates, and the invalid-identifier rate, the fraction of selected courses not in $A_k$. We split invalid identifiers into \emph{corrupted}, whose course name exists in the catalog, and \emph{fabricated}, whose course does not exist at all.
+
+\subsubsection{Judge Design}
+The preliminary study's judge scored relevance, ordering, coverage and an overall grade in one call, without reasoning first and without seeing the candidate pool. Its diagnostics were poor: the overall score equalled the coverage score on \RpctCovEq\% of paths, relevance and ordering correlated at $\rho=\RrhoRelOrd$, \RpctThree\% of overall scores were exactly 3, and shorter paths scored higher ($\rho=\RrhoRatio$ between selection ratio and score). The redesigned judge addresses each issue. It sees the full candidate pool, so that coverage is judged against the courses actually available. It writes a short analysis citing courses \emph{before} each score, following G-Eval \cite{b_liu2023geval}. Each of five dimensions, relevance, coverage, ordering, concision and overall, has explicit anchors for every level from 1 to 5, and concision, the absence of redundant or superfluous courses, is separated from coverage so that length enters the rubric explicitly in both directions. Courses outside $A_k$ are shown as non-existent and anchored as severe relevance errors, and an empty path receives the minimum score on every dimension.
+
+\subsubsection{Two Judge Families}
+Two judges from different providers score every path: \texttt{gpt-4o} at temperature 0 and \texttt{claude-opus-5-5} at low reasoning effort, both with schema-constrained output. A judge from a family different from the generators bounds self-preference \cite{b_panickssery2024selfpref}, and the pair forms a small jury \cite{b_verga2024juries}. Our primary score is the mean of the two judges' overall scores. Neither judge is told which system produced a path.
+
+\subsubsection{Statistical Analysis}
+Competencies are the unit of analysis. For each configuration and competency we average the scores over runs, report the mean over competencies with a percentile-bootstrap $95\%$ confidence interval \cite{b_efron1993bootstrap}, and test fifteen \emph{planned} paired comparisons, one per research question component, with the two-sided Wilcoxon signed-rank test \cite{b_wilcoxon1945} using Pratt's treatment of zero differences, adjusting all fifteen $p$-values together with the Holm procedure \cite{b_holm}. As a complementary model-based analysis we fit a linear mixed-effects model with configuration as fixed effect and a random intercept per competency on the run-level scores \cite{b_bates2015lme4}. Inter-judge agreement is reported as Krippendorff's ordinal $\alpha$ \cite{b_hayes2007alpha}, quadratic-weighted $\kappa$ \cite{b_cohen1968kappa}, Spearman correlation and exact agreement.
+
+\subsection{Implementation Details}
+LLM systems were run three times per competency (runs 0--2); the deterministic systems, naive, retrieval with $k{=}5$ and System One, once. The \texttt{gpt-4o-mini} runs 0 of the single and multi-agent systems are those of the preliminary study and were re-judged with the new protocol. System One models were served locally on a single consumer GPU (NVIDIA RTX 3060, 12\,GB), Laya through its \texttt{laya-serve} server and Kev-4B in bfloat16 through \texttt{kev.serve}, and queried sequentially, one course per request. All prompts and System One questions are in Portuguese, matching the catalog. The workflow is implemented in Python with LangGraph \cite{b_langgraph} and Pydantic \cite{b_pydantic}. In total the study comprises \VnPaths\ generated paths and \VnJudgments\ judgments. One generation, a guarded multi-agent run on the largest pool, failed reproducibly because \texttt{gpt-4o-mini} entered a repetition loop until the 16{,}384-token output limit; we record it as an empty path, which is what a deployed system would return. Code, prompts, raw outputs, judgments and the analysis scripts that generate every number in this paper are released with the paper.\footnote{Repository URL to be added upon acceptance.}
+
+\section{Results}
+\label{sec:results}
+Table~\ref{tab:main2} reports quality, constraint and cost metrics for every configuration, Figure~\ref{fig:forest} summarizes overall quality with confidence intervals, and Table~\ref{tab:pairwise2} reports the planned comparisons.
+
+\input{paper/tables/tab2_main.tex}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{paper/figures/fig2_forest.png}
+\caption{Overall score per configuration, mean of the two judges with bootstrap 95\% confidence intervals over the \RnComp\ competencies. The dotted line marks embedding retrieval with $k{=}5$. Colours denote system families.}
+\label{fig:forest}
+\end{figure}
+
+\input{paper/tables/tab2_pairwise.tex}
+
+\subsection{Selection Matters, and Retrieval Is a Strong Baseline}
+\label{subsec:baselines}
+Selecting courses clearly beats dumping the catalog. The naive dump scores \VovNaive\ against \VovRetr\ for retrieval with $k{=}5$, a difference of $\VdNaiveRetr$ (win/tie/loss for the dump \VwlNaiveRetr, $p_{\mathrm{Holm}}\VpNaiveRetr$). The dump scores the maximum on coverage, \VcovNaive, because it contains every candidate, but collapses on concision, \VconNaive, and ordering, \VordNaive, exactly the trade-off the new rubric was designed to expose. Among the retrieval variants, $k{=}3$ and $k{=}5$ are statistically indistinguishable, at \VovRetrThree\ and \VovRetr, while $k{=}10$ drops to \VovRetrTen. Against this baseline, the \texttt{gpt-4o-mini} systems of the preliminary study do not improve: retrieval leads the proposed multi-agent system by $\VdRetrMulti$ ($95\%$ CI $[\VdloRetrMulti, \VdhiRetrMulti]$, $p_{\mathrm{Holm}}\VpRetrMulti$), confirming with two new judges and three runs the direction of the preliminary result, though the gap is no longer significant after correction.
+
+\subsection{RQ1: The Critic Loop and Its Guardrails}
+\label{subsec:loop}
+The critic loop does not improve paths. With \texttt{gpt-4o-mini}, the multi-agent and single-agent systems differ by $\VdSingleMulti$ ($p_{\mathrm{Holm}}\VpSingleMulti$, win/tie/loss \VwlSingleMulti), and with \texttt{gpt-5.4-mini} without reasoning by $\VdSingleNoneMultiNone$ ($p_{\mathrm{Holm}}\VpSingleNoneMultiNone$). The loop rarely activates: the critic rejected the first path on \VfiredMulti\% of \texttt{gpt-4o-mini} runs, \VfiredSmallMulti\ of the \VfiredNMulti\ activations on pools smaller than three courses, where no valid path can satisfy its rule, and on \VfiredMultiNone\% of non-reasoning \texttt{gpt-5.4-mini} runs.
+
+It is exactly there that the loop is harmful. Table~\ref{tab:halluc2} shows that fabricated courses, courses that do not exist anywhere in the catalog, occur in \emph{one} configuration only, the unguarded \texttt{gpt-4o-mini} multi-agent system, with \VhalFabMulti\ fabricated courses, all on competencies whose pool is smaller than the three-course rule: rejected for being honestly short, the generator complied by inventing plausible titles, and the critic then approved them. Corrupted identifiers, real courses with a rewritten identifier, are an ordinary structured-output error that affects every LLM configuration at a low rate, including the reasoning model. The guardrails remove both. The guarded multi-agent system produced no invalid identifier at all, \VhalPathsGuard\ affected paths out of \VrunsNGuard, its gate repairing or dropping \VgateFixesGuard\ entries along the way, its critic firing on only \VfiredNGuard\ runs, and its quality is indistinguishable from the unguarded loop ($\VdMultiGuard$, $p_{\mathrm{Holm}}\VpMultiGuard$). The hybrid design, which needs no critic at all, likewise has no invalid identifier and matches both retrieval ($\VdHybridRetr$, $p_{\mathrm{Holm}}\VpHybridRetr$) and the multi-agent system ($\VdHybridMulti$, $p_{\mathrm{Holm}}\VpHybridMulti$).
+
+\input{paper/tables/tab2_halluc.tex}
+
+The answer to RQ1 is therefore that the critic adds cost, \VitersMulti\ generator calls on average plus one critic call per iteration, and a fabrication risk, but no quality, and that a few lines of programmatic verification achieve what the critic was meant to achieve, valid paths of adequate length, more reliably.
+
+\subsection{RQ2: System-1 Versus System-2 Generation}
+\label{subsec:reasoning}
+Explicit reasoning is the only intervention in our study that clearly improves curation. With the \emph{same} model, \texttt{gpt-5.4-mini}, switching reasoning from \texttt{none} to \texttt{high} raises the single-agent score from \VovSingleNone\ to \VovSingleHigh\ ($\VdSingleNoneSingleHigh$ for none minus high, CI $[\VdloSingleNoneSingleHigh, \VdhiSingleNoneSingleHigh]$, win/tie/loss \VwlSingleNoneSingleHigh, $p_{\mathrm{Holm}}\VpSingleNoneSingleHigh$) and the multi-agent score from \VovMultiNone\ to \VovMultiHigh\ ($p_{\mathrm{Holm}}\VpMultiNoneMultiHigh$). The gain is concentrated on the dimensions where planning should matter. Ordering rises from \VordSingleNone\ to \VordSingleHigh\ and concision from \VconSingleNone\ to \VconSingleHigh, while coverage is unchanged, \VcovSingleNone\ against \VcovSingleHigh, and the reasoning paths are slightly shorter, \VnselSingleHigh\ against \VnselSingleNone\ courses. The reasoning model thus selects similar material but sequences it more coherently and prunes redundancy. Even without reasoning, the newer model already outscores \texttt{gpt-4o-mini}, \VovSingleNone\ against \VovSingle, so model generation and reasoning effort contribute separately (Figure~\ref{fig:reasoning}).
+
+Reasoning also changes the value of the critic, for the worse. Under high reasoning the critic rejected the first path on \VfiredMultiHigh\% of runs, far more often than without reasoning, yet the single agent \emph{outscores} the multi-agent system by $\VdSingleHighMultiHigh$ (CI $[\VdloSingleHighMultiHigh, \VdhiSingleHighMultiHigh]$, win/tie/loss \VwlSingleHighMultiHigh, $p_{\mathrm{Holm}}\VpSingleHighMultiHigh$). A deliberate generator does not need a critic to satisfy two simple rules, and the critic's feedback, which concerns only alignment and minimum length, displaces paths that the generator had already reasoned about. The cost of the best configuration remains small, \$\VcostSingleHigh\ and \VlatSingleHigh\,s per path.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{paper/figures/fig2_reasoning.png}
+\caption{Overall score by generator and architecture. Reasoning raises quality for both architectures, and under high reasoning the critic loop scores below the single agent. The dotted line marks retrieval with $k{=}5$.}
+\label{fig:reasoning}
+\end{figure}
+
+\subsection{RQ3: System One Decision Models}
+\label{subsec:s1results}
+The two System One models behave very differently. Kev-4B is competitive with embedding retrieval: \VovKev\ for the threshold variant and \VovKevFive\ for the top-5 variant, against \VovRetr\ for retrieval with $k{=}5$ ($p_{\mathrm{Holm}}\VpKevRetr$ and $\VpKevFiveRetr$, win/tie/loss \VwlKevFiveRetr\ at equal length). Its relevance probabilities are informative: over all candidate courses they predict whether the high-reasoning LLM selected a course with an area under the ROC curve of \VaucKev, and \VpAboveKev\% of candidates pass the 0.5 threshold. It does not, however, reach the generative LLMs; it trails the non-reasoning \texttt{gpt-5.4-mini} single agent by $\VdKevSingleNone$ ($p_{\mathrm{Holm}}\VpKevSingleNone$). Its ordering by predicted level is no better than retrieval's similarity order, \VordKevFive\ against \VordRetr.
+
+Laya, in contrast, fails on this task: \VovLaya\ and \VovLayaFive\ for the two variants, no better than the naive dump ($p_{\mathrm{Holm}}\VpLayaRetr$ against retrieval). Its relevance probabilities are nearly uninformative, with an AUC of \VaucLaya\ and \VpAboveLaya\% of all candidates judged relevant, including, for instance, a course for teaching assistants under a strategic-vision competency. Laya's shipped heads were trained on routing-style decisions over short texts, and judging the pedagogical fit of a course to a competency in Portuguese is far from that distribution. The contrast suggests that, at the current state of the art, the decision quality of System One models comes from the backbone, a 4B-parameter generative base model for Kev against a 322M-parameter encoder for Laya, more than from the non-autoregressive interface.
+
+Cost and speed favour System One models in principle but depend on deployment. Laya took \(0.08\)\,s per candidate course on our consumer GPU; Kev-4B took about 2.3\,s per candidate, sequentially, so that a large pool took tens of seconds, whereas its developers report tens of milliseconds per request on data-centre GPUs with batching \cite{b_palmer2026kev}. Neither incurs any per-token API cost, and neither can produce an invalid identifier. For a platform with data-sovereignty constraints, a locally served Kev-class model thus offers retrieval-level quality with an explicit, per-course, probabilistic rationale.
+
+\subsection{RQ4: Path Length Confounds Comparisons}
+\label{subsec:length}
+Length explains a large part of the differences above. The single instruction ``select at most five courses'' raises the \texttt{gpt-4o-mini} single agent from \VovSingle\ to \VovSingleFive\ ($\VdSingleSingleFive$, $p_{\mathrm{Holm}}\VpSingleSingleFive$), more than any architectural change to that model and enough to overtake retrieval. In a regression of the overall score on configuration and the logarithm of path length, the length coefficient is \VbetaLogLen\ ($p\VpLogLen$), and the retrieval sweep shows a clear optimum at small $k$. Figure~\ref{fig:length} shows the mechanism in the rubric: as the selection ratio $m/|A_k|$ grows, coverage rises and concision falls for both judges, and the overall score follows concision more than coverage. Comparisons between systems that produce paths of different lengths, which includes most comparisons in the curation literature, therefore partly measure the length preference built into the rubric. The reasoning gain in Section~\ref{subsec:reasoning} survives this concern: the reasoning paths are only marginally shorter, and the high-reasoning single agent outscores the length-capped \texttt{gpt-4o-mini} agent at almost the same length.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{paper/figures/fig2_length.png}
+\caption{Mean coverage, concision and overall scores by selection ratio $m/|A_k|$, for each judge, over all selective systems. Longer paths gain coverage and lose concision.}
+\label{fig:length}
+\end{figure}
+
+\subsection{RQ5: How Reliable Are the Judges?}
+\label{subsec:judge}
+Table~\ref{tab:agree} reports the agreement between the two judges. On individual paths it is modest: Krippendorff's ordinal $\alpha$ is \ValphaOverall\ for the overall score and ranges from \ValphaOrdering\ for ordering to \ValphaConcision\ for concision, with Spearman correlations of \VrhoOrdering\ to \VrhoConcision. Part of the disagreement is a constant offset, since \texttt{gpt-4o} is systematically more lenient than \texttt{claude-opus-5-5}, which $\alpha$ and $\kappa$ penalize but $\rho$ does not. At the level that matters for conclusions, however, the judges agree almost perfectly: their mean overall scores per configuration correlate at Spearman $\rho=\VrhoSysJudges$ (Kendall $\tau=\VtauSysJudges$). We find no evidence of self-preference: the gap between the OpenAI judge and the Anthropic judge is \VgapOpenAI\ points on paths generated by OpenAI models and \VgapOther\ on paths from non-generative systems ($p\VpGap$).
+
+\input{paper/tables/tab2_agree.tex}
+
+The redesigned rubric also removed the collapse of the preliminary judge. The overall score now equals the coverage score on \VpctOvEqCovG\% (\texttt{gpt-4o}) and \VpctOvEqCovC\% (\texttt{claude-opus-5-5}) of paths, against \RpctCovEq\% before; relevance and ordering are distinct dimensions for the Anthropic judge ($\rho=\VrhoRelOrdC$) though still entangled for the OpenAI judge ($\rho=\VrhoRelOrdG$); and coverage and concision pull in opposite directions with length, as intended. On the \VnVOne\ paths judged by both protocols, the old and new overall scores correlate only at $\rho=\VrhoVOneVTwo$, a reminder that absolute judge scores are protocol-specific and only within-protocol comparisons are meaningful.
+
+\subsection{Decoding Variability}
+\label{subsec:variability}
+Repeated runs at fixed settings are far from deterministic, consistent with prior reports on LLM API nondeterminism \cite{b_nondeterminism}. Across the three runs, \texttt{gpt-4o-mini} produced the identical path for only \VidentSingle\% of competencies in the single-agent configuration and the same set of courses for \VsamesetSingle\%; for \texttt{gpt-5.4-mini}, whose reasoning variant ignores the temperature parameter, identical paths occurred for \VidentSingleNone\% (no reasoning) and \VidentSingleHigh\% (high reasoning) of competencies. The mean within-competency standard deviation of the overall score across runs is \VsdSingle\ to \VsdSingleNone\ points, of the same order as several between-system differences in Table~\ref{tab:pairwise2}. Single-run comparisons of LLM curators are therefore unreliable. The mixed model also shows that competencies differ systematically: the random intercept accounts for \VmmICC\ of the variance left after the configuration effects, which is why all our comparisons are paired by competency.
+
+\subsection{Effect of Candidate-Pool Size}
+\label{subsec:poolsize}
+Figure~\ref{fig:by_size2} stratifies quality by pool size. With one or two candidates there is nothing to curate, and every system scores around \VovRetrBucketA. With three to five, no system is clearly better than the naive dump, because the dump already is a short path. The systems separate on pools of six or more courses: on the \VnBucketD\ competencies with more than ten candidates the high-reasoning single agent reaches \VovSingleHighBucketD, against \VovRetrBucketD\ for retrieval and \VovNaiveBucketD\ for the dump. The advantage of reasoning thus grows with the size of the selection problem, where both pruning and sequencing matter most.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{paper/figures/fig2_pareto.png}
+\caption{Quality versus latency per path, log scale. System One latencies were measured on a consumer GPU with sequential per-course requests; the naive dump is plotted at 1\,ms. High-reasoning generation is the quality frontier, while retrieval and the length-capped single agent offer most of the quality at a fraction of the latency.}
+\label{fig:pareto}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{paper/figures/fig2_bysize.png}
+\caption{Mean overall score by number of candidate courses for selected configurations, with the number of competencies per stratum.}
+\label{fig:by_size2}
+\end{figure}
+
+\subsection{Efficiency}
+\label{subsec:efficiency}
+All systems are cheap compared with human curation, which takes hours per path. Retrieval needs one embedding call; the \texttt{gpt-4o-mini} systems cost about \$\VcostSingle\ to \$\VcostMulti\ per path; and the best configuration, the high-reasoning single agent, costs \$\VcostSingleHigh\ and \VlatSingleHigh\,s per path, while the high-reasoning multi-agent system costs more, \$\VcostMultiHigh\ and \VlatMultiHigh\,s, for lower quality (Figure~\ref{fig:pareto}). Across the whole study, generation cost \$\VgenCostTotal\ and judging \$\VjudgeCostTotal: evaluation, not generation, dominates the budget of a rigorous study of this kind.
+
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{What Should a Platform Deploy?}
+The results support a simple deployment rule. Where a hosted reasoning model is acceptable, a \emph{single} reasoning-model call constrained to catalog courses, followed by the identifier-validation gate and the pool-aware length rule, gives the best quality we observed at a cost of fractions of a cent per path, and needs no critic loop. Where data must stay on premises or cost must be near zero, embedding retrieval with a small $k$ or a locally served System One model of the Kev class gives a solid, hallucination-free baseline, and the System One model adds a per-course relevance probability that a human curator can audit or threshold. Regardless of the selector, programmatic verification is mandatory, because every generative configuration produced invalid identifiers at some rate, and because an LLM critic is not a substitute for it: the critic approved fabricated courses.
+
+\subsection{Why Did the Critic Loop Fail?}
+Self-refinement helps when the critic has information or checking ability that the generator lacks \cite{b_kamoi2024selfcorrect}. Our critic, faithful to the original architecture, checked a length rule and a vague alignment rule, neither of which supplies such information; the length rule is trivially checkable in code, and the alignment rule is something the generator already optimizes. The loop therefore either did nothing or, when it fired, pushed the generator towards the critic's narrow notion of quality, most visibly when the generator was already deliberating with a reasoning model and when the pool made the length rule unsatisfiable. This agrees with taxonomies of multi-agent failure, in which weak verification and misaligned specifications dominate \cite{b_cemri2025mas}. A critic worth its cost would need external signals, for example prerequisite relations \cite{b_liu2020prereq}, learner outcomes or curator feedback.
+
+\subsection{Fast, Slow, or Agentic?}
+The title's question has a clear answer on this task. \emph{Slow} thinking, explicit reasoning by the generator, improves curation, mostly by ordering courses into a coherent progression and pruning redundant ones. \emph{Agentic} structure, a separate critic, does not, and becomes counterproductive once the generator reasons. \emph{Fast} non-generative selection, by retrieval or by a capable System One model, does not reach reasoning-level quality, but it is a competitive, verifiable and cheap floor that any more complex system must clearly beat; the fact that the proposed multi-agent system of our preliminary study did not beat it illustrates why such baselines must be reported \cite{b_agents_matter}.
+
+\subsection{Implications for Evaluating Curation Systems}
+Three practices follow from RQ4 and RQ5. First, control or report path length, because a one-line length instruction moved scores more than any architecture; equal-length variants such as our top-5 System One and capped single agent make comparisons interpretable. Second, use repeated runs and paired, multiplicity-corrected tests, because temperature-0 decoding is not deterministic and run-to-run variation is of the same order as many reported gains. Third, use more than one judge and interpret them at the level of system rankings, where they agree, rather than individual paths, where they do not; and keep programmatic checks outside the judge, which in our preliminary study did not penalize courses explicitly labelled as non-existent.
+
+\subsection{Threats to Validity}
+\label{subsec:threats}
+\textit{Construct validity.} Quality is measured by LLM judges. We mitigated known weaknesses with a reason-first, anchored, pool-aware rubric and two judges from different families, whose system rankings agree, but item-level agreement is modest and no human ratings are yet reported. We prepared a blind evaluation protocol in which curators score a stratified sample of 80 paths from five systems on the same rubric, released with the code, and its results are needed to anchor the absolute scale. \textit{Internal validity.} LLM systems were run three times and deterministic ones once; System One models were used zero-shot with their shipped calibration, and fine-tuning, which their developers report as the main lever for accuracy \cite{b_palmer2026kev,b_laya2026}, could change their standing; the System One questions were written once and not tuned. The hosted Jev was not available to us, so our System One conclusions concern its open-source counterparts. \textit{External validity.} Results concern one Portuguese-language public-sector catalog with \RnComp\ evaluable competencies, curation by textual descriptions only, and specific model versions; Laya's failure may be specific to Portuguese. \textit{Statistical conclusion validity.} The integer scale produces many ties, which reduces the power of signed-rank tests; we report win, tie and loss counts, bootstrap intervals, a mixed model, and Holm-adjusted $p$-values over fifteen planned comparisons.
+
+\section{Conclusion}
+\label{sec:conclusion}
+We compared non-generative, generative and agentic approaches to curating learning paths on the full catalog of a Brazilian public-sector training platform, with \VnPaths\ paths from \VnVariants\ configurations, repeated runs, two cross-family LLM judges and programmatic verification. Explicit reasoning was the one factor that clearly improved curation, mainly by producing better-ordered and less redundant paths, whereas the self-reflective critic loop, the central mechanism of the multi-agent architecture, never helped, fabricated courses on small pools when unguarded, and lowered quality when the generator reasoned. Programmatic guardrails eliminated invalid identifiers at no quality cost, and a hybrid retrieve-generate-verify design matched the agentic system without a critic. Among the new System One decision models, Kev-4B matched embedding retrieval with no hallucination risk and no API cost, while a multilingual encoder failed on Portuguese. Path length and decoding variability confound naive comparisons, and LLM judges, though they disagree on individual paths, agree on how systems rank. For educational platforms the practical message is to prefer a single, verified reasoning-model call or, under privacy or cost constraints, a verified retrieval or System One selector, over agentic machinery whose value has not been measured against such baselines. Future work includes the human validation of judged quality, fine-tuning System One models on curator decisions, the hosted Jev, prerequisite-aware critics that bring external information into the loop, and open-weight reasoning models for on-premises deployment.
+
+\input{paper/references.tex}
+
+\begin{IEEEbiography}{Silvan Ferreira}
+% TODO: biography and 1in x 1.25in photograph, required by IEEE Access for every author.
+Biography to be added.
+\end{IEEEbiography}
+
+\EOD
+
+\end{document}

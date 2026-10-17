@@ -1,0 +1,18 @@
+\begin{table}[t]
+\centering
+\caption{All pairwise comparisons of the overall judge score over 66 competencies. $\Delta$ is the mean paired difference (second minus first system), W/L the number of competencies on which the second system scores higher or lower (the rest are ties), $p$ the two-sided Wilcoxon signed-rank $p$-value and $p_{\mathrm{Holm}}$ its Holm correction over the six comparisons.}
+\label{tab:pairwise}
+\small\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llcccc}
+\hline
+First & Second & $\Delta$ & W/L & $p$ & $p_{\mathrm{Holm}}$ \\
+\hline
+Naive & Retrieval & +0.33 & 25/3 & $<$0.001 & $<$0.001 \\
+Naive & Single-agent & +0.17 & 15/4 & 0.0116 & 0.0466 \\
+Naive & Multi-agent & +0.14 & 14/5 & 0.0389 & 0.103 \\
+Retrieval & Single-agent & -0.17 & 7/17 & 0.0343 & 0.103 \\
+Retrieval & Multi-agent & -0.20 & 6/19 & 0.00932 & 0.0466 \\
+Single-agent & Multi-agent & -0.03 & 5/7 & 0.564 & 0.564 \\
+\hline
+\end{tabular}
+\end{table}

@@ -1,0 +1,15 @@
+\begin{table*}[t]
+\centering
+\caption{Learning-path quality across systems over 66 competencies. Rubric scores are LLM-judge means on a 1 to 5 scale. The columns $\Delta$ and $p$ compare each system against the proposed multi-agent system with a Wilcoxon signed-rank test on the overall score. Best value per column in bold.}
+\label{tab:main}
+\begin{tabular}{lcccccccc}
+\hline
+System & Relevance & Ordering & Coverage & Overall [95\% CI] & $\Delta$Overall & $p$ & Min-3, \% & Halluc., \% \\
+\hline
+Naive full-catalog & 3.24 & 2.27 & 2.88 & 2.88 [2.76, 3.00] & +0.14 & 0.0389 & 95.5 & 0.0 \\
+Embedding retrieval & 3.62 & 2.67 & \textbf{3.21} & \textbf{3.21} [3.05, 3.38] & -0.20 & 0.00932 & 95.5 & 0.0 \\
+Single-agent, no critic & 3.61 & 2.62 & 3.05 & 3.05 [2.88, 3.21] & -0.03 & 0.564 & 95.5 & 0.3 \\
+Multi-agent, proposed & \textbf{3.65} & \textbf{2.70} & 3.02 & 3.02 [2.88, 3.15] & -- & -- & 100.0 & 3.1 \\
+\hline
+\end{tabular}
+\end{table*}

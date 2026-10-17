@@ -1,0 +1,27 @@
+\begin{table*}[t]
+\centering
+\caption{Planned paired comparisons on the per-competency mean overall score (both judges, runs averaged). $\Delta$ is A minus B with a bootstrap 95\% CI; W/T/L counts competencies where A wins, ties or loses; $p_{\mathrm{Holm}}$ is the Wilcoxon signed-rank $p$-value, Holm-adjusted over all comparisons.}
+\label{tab:pairwise2}
+\footnotesize
+\begin{tabular}{lllcccr}
+\toprule
+Question & A & B & $\Delta$ [95\% CI] & W/T/L & $n$ & $p_{\mathrm{Holm}}$ \\
+\midrule
+retrieval vs. proposed multi-agent & Retrieval $k{=}5$ & Multi-agent (4o-mini) & +0.16 [+0.02, +0.30] & 22/30/14 & 66 & 0.727 \\
+critic loop, gpt-4o-mini & Single (4o-mini) & Multi-agent (4o-mini) & -0.01 [-0.09, +0.07] & 13/38/15 & 66 & 1.000 \\
+guardrails on the loop & Multi-agent (4o-mini) & Guarded (4o-mini) & -0.03 [-0.11, +0.04] & 13/39/14 & 66 & 1.000 \\
+hybrid vs. retrieval & Hybrid (4o-mini) & Retrieval $k{=}5$ & -0.09 [-0.20, +0.03] & 10/39/17 & 66 & 1.000 \\
+hybrid vs. multi-agent & Hybrid (4o-mini) & Multi-agent (4o-mini) & +0.07 [-0.04, +0.18] & 20/32/14 & 66 & 1.000 \\
+length cap on the single agent & Single (4o-mini) & Single max.\,5 (4o-mini) & -0.32 [-0.43, -0.21] & 5/22/39 & 66 & <0.001 \\
+reasoning, single agent & Single (5.4, none) & Single (5.4, high) & -0.36 [-0.47, -0.25] & 6/18/42 & 66 & <0.001 \\
+reasoning, multi-agent & Multi-agent (5.4, none) & Multi-agent (5.4, high) & -0.24 [-0.33, -0.14] & 7/26/33 & 66 & <0.001 \\
+critic loop under high reasoning & Single (5.4, high) & Multi-agent (5.4, high) & +0.13 [+0.07, +0.19] & 24/36/6 & 66 & 0.007 \\
+critic loop without reasoning & Single (5.4, none) & Multi-agent (5.4, none) & -0.00 [-0.10, +0.10] & 15/31/20 & 66 & 1.000 \\
+System One (Kev) vs. retrieval & Kev-4B thr. & Retrieval $k{=}5$ & -0.06 [-0.26, +0.14] & 16/32/18 & 66 & 1.000 \\
+System One (Laya) vs. retrieval & Laya thr. & Retrieval $k{=}5$ & -0.68 [-0.86, -0.50] & 1/29/36 & 66 & <0.001 \\
+Kev top-5 vs. retrieval at equal length & Kev-4B top-5 & Retrieval $k{=}5$ & +0.08 [-0.09, +0.24] & 16/38/12 & 66 & 1.000 \\
+System One vs. System-1 LLM & Kev-4B thr. & Single (5.4, none) & -0.35 [-0.53, -0.18] & 14/19/33 & 66 & 0.008 \\
+selection vs. no selection & Naive dump & Retrieval $k{=}5$ & -0.79 [-0.98, -0.59] & 2/24/40 & 66 & <0.001 \\
+\bottomrule
+\end{tabular}
+\end{table*}
