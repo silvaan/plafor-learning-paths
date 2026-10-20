@@ -25,10 +25,13 @@ FIGDIR = ROOT / "papers" / "ieee-access" / "paper" / "figures"
 TABDIR = ROOT / "papers" / "ieee-access" / "paper" / "tables"
 EMB = "text-embedding-3-small"
 ALL_JUDGES = {"gpt-4o": "G", "claude-opus-5-5": "C"}
-# ANALYZE_JUDGES=C restricts the composite score to a subset (e.g. while a judge is incomplete)
+# The primary score comes from claude-opus-5-5, which judged every path in every run.
+# gpt-4o judged a stratified subsample (run 0 of every configuration, all runs of the
+# gpt-4o-mini and retrieval configurations) and is used for agreement and robustness.
+# ANALYZE_JUDGES=GC switches the composite to the two-judge mean on the doubly judged paths.
 import os
 JUDGES = {k: v for k, v in ALL_JUDGES.items()
-          if v in os.environ.get("ANALYZE_JUDGES", "".join(ALL_JUDGES.values()))}
+          if v in os.environ.get("ANALYZE_JUDGES", "C")}
 DIMS = ["relevance", "coverage", "ordering", "concision", "overall"]
 RNG = np.random.default_rng(0)
 
@@ -189,7 +192,7 @@ def fpr(p):
 def main():
     df = load()
     judged = df.dropna(subset=["overall"])
-    print(f"{len(df)} paths, {len(judged)} judged by both judges, "
+    print(f"{len(df)} paths, {len(judged)} judged by the primary judge, "
           f"{df.competency_id.nunique()} competencies")
     print(judged.groupby("stem").size().reindex([STEM[k] for k in ORDER]))
     M = {}  # macros
@@ -205,14 +208,15 @@ def main():
         lo, hi = boot_ci(cm[s].values)
         row = dict(stem=s, label=VARIANTS[k][1], family=VARIANTS[k][2], runs=g.run.nunique(),
                    ov=cm[s].mean(), lo=lo, hi=hi,
-                   ovG=g.overall_G.mean(), ovC=g.overall_C.mean(),
+                   ovG=g[g.run == 0].overall_G.mean(), ovC=g.overall_C.mean(),
+                   ovTwo=g[g.run == 0][["overall_G", "overall_C"]].mean(axis=1).mean(),
                    rel=g.relevance.mean(), cov=g.coverage.mean(), ord=g.ordering.mean(),
                    con=g.concision.mean(),
                    nsel=g.n_selected.mean(), hall=100 * g.hallucination_rate.mean(),
                    minlen=100 * g.meets_min_courses.mean(),
                    lat=g.latency_s.mean(), cost=g.gen_cost.mean())
         rows.append(row)
-        for c in ["ov", "lo", "hi", "ovG", "ovC", "rel", "cov", "ord", "con", "nsel", "hall", "minlen", "lat"]:
+        for c in ["ov", "lo", "hi", "ovG", "ovC", "ovTwo", "rel", "cov", "ord", "con", "nsel", "hall", "minlen", "lat"]:
             M[f"{c}{s}"] = fnum(row[c], 1 if c in ("hall", "minlen", "nsel") else 2)
         M[f"cost{s}"] = f"{row['cost']:.5f}"
     main_tab = pd.DataFrame(rows)
@@ -244,6 +248,34 @@ def main():
         M[f"dhi{tag}"] = f"{r.dhi:+.2f}"
         M[f"p{tag}"] = fpr(r.p_holm)
         M[f"wl{tag}"] = f"{r.win}/{r.tie}/{r.loss}"
+
+    # ---------------- robustness: planned comparisons on run 0 with the two-judge mean ----------------
+    r0 = df[df.run == 0].dropna(subset=["overall_G", "overall_C"]).copy()
+    r0["two"] = (r0.overall_G + r0.overall_C) / 2
+    cm2 = r0.groupby(["competency_id", "stem"]).two.mean().unstack()
+    rob = []
+    for r in comp.itertuples():
+        m = cm2[r.a].notna() & cm2[r.b].notna()
+        x, y = cm2[r.a][m], cm2[r.b][m]
+        try:
+            p = stats.wilcoxon(x, y, zero_method="pratt").pvalue
+        except ValueError:
+            p = 1.0
+        rob.append(dict(a=r.a, b=r.b, diff=(x - y).mean(), p=p, diffC=r.diff, pC=r.p_holm))
+    rob = pd.DataFrame(rob)
+    rob["p_holm"] = holm(rob.p)
+    print("\nRobustness (run 0, mean of G and C):\n", rob.round(3).to_string())
+    for r in rob.itertuples():
+        M[f"dTwo{r.a}{r.b}"] = f"{r.diff:+.2f}"
+        M[f"pTwo{r.a}{r.b}"] = fpr(r.p_holm)
+    sig = (rob.pC < 0.05)
+    M["nSigC"] = str(int(sig.sum()))
+    M["nSameSign"] = str(int((np.sign(rob["diff"]) == np.sign(rob.diffC)).sum()))
+    M["nSigKept"] = str(int((sig & (rob.p_holm < 0.05) & (np.sign(rob["diff"]) == np.sign(rob.diffC))).sum()))
+    M["nPlanned"] = str(len(rob))
+    M["nRunZeroBoth"] = str(len(r0))
+    sys2 = r0.groupby("stem").two.mean()
+    M["rhoSysTwoC"] = fnum(stats.spearmanr(sys2, cm.mean().reindex(sys2.index))[0])
 
     # ---------------- mixed model (run-level, random intercept per competency) ----------------
     mm = judged[["overall", "stem", "competency_id"]].copy()
@@ -367,16 +399,20 @@ def main():
 
     # ---------------- costs ----------------
     jcost = 0.0
-    for judge, tag in JUDGES.items():
+    js = pd.DataFrame([json.loads(l) for l in (RESULTS / "judgments_v2.jsonl").read_text().splitlines() if l.strip()])
+    js["batch"] = js.get("batch", pd.Series(False, index=js.index)).fillna(False).astype(bool)
+    for judge, tag in ALL_JUDGES.items():
         pin, pout = PRICE[judge]
-        c = (df[f"jpt_{tag}"].fillna(0) * pin + df[f"jct_{tag}"].fillna(0) * pout).sum() / 1e6
+        j = js[js.judge == judge]
+        c = ((j.prompt_tokens * pin + j.completion_tokens * pout) * np.where(j.batch, 0.5, 1.0)).sum() / 1e6
         M[f"judgeCost{tag}"] = fnum(c, 2)
         jcost += c
     M["judgeCostTotal"] = fnum(jcost, 2)
     M["genCostTotal"] = fnum(df.gen_cost.sum(), 2)
     M["nPaths"] = str(len(df))
     M["nJudged"] = str(len(judged))
-    M["nJudgments"] = str(2 * len(judged))
+    M["nJudgments"] = str(int(df.overall_C.notna().sum() + df.overall_G.notna().sum()))
+    M["nJudgedG"] = str(int(df.overall_G.notna().sum()))
     M["nVariants"] = str(df.stem.nunique())
     M["nCompVTwo"] = str(df.competency_id.nunique())
 
@@ -443,14 +479,15 @@ def s1_diag(df, M):
 # --------------------------------------------------------------------------- #
 def write_tables(main_tab, comp, agree, hal):
     L = [r"\begin{table*}[t]", r"\centering",
-         r"\caption{Main results over all competencies. Overall is the mean of the two v2 judges "
-         r"(gpt-4o, G; claude-opus-5-5, C), averaged over runs per competency, with a bootstrap 95\% CI. "
-         r"Rel., Cov., Ord.\ and Conc.\ are the per-dimension means of both judges. $m$ is the mean path length, "
+         r"\caption{Main results over all competencies. Overall is the score of the primary judge "
+         r"(claude-opus-5-5), averaged over runs per competency, with a bootstrap 95\% CI. "
+         r"G is the second judge (gpt-4o) on run 0 and G+C the two-judge mean on run 0. "
+         r"Rel., Cov., Ord.\ and Conc.\ are the primary judge's per-dimension means. $m$ is the mean path length, "
          r"Inv.\ the invalid-identifier rate over all runs, and Cost the generation cost per path in USD.}",
          r"\label{tab:main2}", r"\setlength{\tabcolsep}{3pt}", r"\footnotesize",
          r"\resizebox{\textwidth}{!}{%",
          r"\begin{tabular}{llccccccccccr}", r"\toprule",
-         r"Family & System & Runs & Overall [95\% CI] & G & C & Rel. & Cov. & Ord. & Conc. & $m$ & Inv.\,\% & Cost \\",
+         r"Family & System & Runs & Overall [95\% CI] & G & G+C & Rel. & Cov. & Ord. & Conc. & $m$ & Inv.\,\% & Cost \\",
          r"\midrule"]
     prev = None
     for r in main_tab.itertuples():
@@ -458,14 +495,14 @@ def write_tables(main_tab, comp, agree, hal):
             L.append(r"\midrule")
         fam = r.family if r.family != prev else ""
         prev = r.family
-        L.append(f"{fam} & {r.label} & {r.runs} & {r.ov:.2f} [{r.lo:.2f}, {r.hi:.2f}] & {r.ovG:.2f} & {r.ovC:.2f} & "
+        L.append(f"{fam} & {r.label} & {r.runs} & {r.ov:.2f} [{r.lo:.2f}, {r.hi:.2f}] & {r.ovG:.2f} & {r.ovTwo:.2f} & "
                  f"{r.rel:.2f} & {r.cov:.2f} & {r.ord:.2f} & {r.con:.2f} & {r.nsel:.1f} & {r.hall:.1f} & "
                  f"{r.cost:.5f} \\\\")
     L += [r"\bottomrule", r"\end{tabular}}", r"\end{table*}"]
     (TABDIR / "tab2_main.tex").write_text("\n".join(L) + "\n")
 
     L = [r"\begin{table*}[t]", r"\centering",
-         r"\caption{Planned paired comparisons on the per-competency mean overall score (both judges, runs averaged). "
+         r"\caption{Planned paired comparisons on the per-competency mean overall score (primary judge, runs averaged). "
          r"$\Delta$ is A minus B with a bootstrap 95\% CI; W/T/L counts competencies where A wins, ties or loses; "
          r"$p_{\mathrm{Holm}}$ is the Wilcoxon signed-rank $p$-value, Holm-adjusted over all comparisons.}",
          r"\label{tab:pairwise2}", r"\footnotesize",
@@ -481,7 +518,7 @@ def write_tables(main_tab, comp, agree, hal):
     (TABDIR / "tab2_pairwise.tex").write_text("\n".join(L) + "\n")
 
     L = [r"\begin{table}[t]", r"\centering",
-         r"\caption{Agreement between the two v2 judges over all judged paths: Krippendorff's ordinal $\alpha$, "
+         r"\caption{Agreement between the two v2 judges over all doubly judged paths: Krippendorff's ordinal $\alpha$, "
          r"quadratic-weighted $\kappa$, Spearman $\rho$, exact agreement, and each judge's mean.}",
          r"\label{tab:agree}", r"\footnotesize", r"\begin{tabular}{lcccccc}", r"\toprule",
          r"Dimension & $\alpha$ & $\kappa_w$ & $\rho$ & Exact\,\% & G & C \\", r"\midrule"]

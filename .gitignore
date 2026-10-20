@@ -25,3 +25,4 @@ results/human_eval/filled/
 *.out
 *.synctex.gz
 papers/**/access.pdf
+results/batch/

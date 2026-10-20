@@ -11,6 +11,8 @@ Changes from the v1 judge (judge.py), motivated by its diagnostics in the paper:
 Usage:
     python src/rejudge.py --judges gpt-4o claude-opus-5-5
     python src/rejudge.py --judges claude-opus-5-5 --filter-run 0
+    python src/rejudge.py --judges gpt-4o --stratified --batch submit   # OpenAI Batch API, 50% off
+    python src/rejudge.py --judges gpt-4o --batch collect
 """
 from __future__ import annotations
 
@@ -30,6 +32,11 @@ from db import PlaforEduDB
 RESULTS = Path(__file__).resolve().parent.parent / "results"
 GEN_PATH = RESULTS / "gen_v2.jsonl"
 JUDGE_PATH = RESULTS / "judgments_v2.jsonl"
+BATCH_DIR = RESULTS / "batch"
+# Batch API prices in USD per 1M tokens (input, output), and the per-judgment token
+# means measured on the synchronous gpt-4o run, used to cap spending before submitting.
+BATCH_PRICE = {"gpt-4o": (1.25, 5.00)}
+MEAN_TOKENS = (1511, 396)
 
 JUDGE_V2_PROMPT = """Você é um avaliador especialista em design instrucional e curadoria de trilhas formativas para servidores públicos. Avalie a trilha proposta (sequência ordenada de cursos) para o objetivo abaixo. A trilha só pode usar cursos do conjunto de candidatos do catálogo.
 
@@ -120,10 +127,75 @@ def key_of(r: dict) -> tuple:
     return (r["system"], r["gen_model"], r["competency_id"], r.get("run", 0))
 
 
+def openai_body(model: str, prompt: str) -> dict:
+    from openai.lib._parsing._completions import type_to_response_format_param
+    return {"model": model, "temperature": 0.0,
+            "messages": [{"role": "user", "content": prompt}],
+            "response_format": type_to_response_format_param(VerdictV2)}
+
+
+def batch_submit(judge: str, jobs: list, recs: dict, max_usd: float):
+    from openai import OpenAI
+    pin, pout = BATCH_PRICE[judge]
+    est = len(jobs) * (MEAN_TOKENS[0] * pin + MEAN_TOKENS[1] * pout) / 1e6
+    print(f"{len(jobs)} requests, estimated ${est:.2f} (cap ${max_usd:.2f})")
+    if est > max_usd:
+        sys.exit("estimated cost above cap, not submitting")
+    BATCH_DIR.mkdir(exist_ok=True)
+    db = PlaforEduDB()
+    req_path = BATCH_DIR / f"{judge}_requests.jsonl"
+    with req_path.open("w") as f:
+        for _, k in jobs:
+            f.write(json.dumps({"custom_id": json.dumps(list(k)), "method": "POST",
+                                "url": "/v1/chat/completions",
+                                "body": openai_body(judge, build_prompt(db, recs[k]))},
+                               ensure_ascii=False) + "\n")
+    client = OpenAI()
+    fid = client.files.create(file=req_path.open("rb"), purpose="batch").id
+    b = client.batches.create(input_file_id=fid, endpoint="/v1/chat/completions",
+                              completion_window="24h")
+    (BATCH_DIR / f"{judge}_batch_id.txt").write_text(b.id)
+    print(f"submitted batch {b.id}")
+
+
+def batch_collect(judge: str):
+    from openai import OpenAI
+    client = OpenAI()
+    b = client.batches.retrieve((BATCH_DIR / f"{judge}_batch_id.txt").read_text().strip())
+    print(f"batch {b.id}: {b.status} {b.request_counts}")
+    if b.status != "completed":
+        return
+    pin, pout = BATCH_PRICE[judge]
+    n = cost = 0
+    with JUDGE_PATH.open("a") as f:
+        for l in client.files.content(b.output_file_id).text.splitlines():
+            r = json.loads(l)
+            body = r["response"]["body"] if r.get("response") else None
+            if not body or r["response"]["status_code"] != 200:
+                print(f"ERROR {r['custom_id']}: {r.get('error') or body}")
+                continue
+            d = VerdictV2.model_validate_json(body["choices"][0]["message"]["content"]).model_dump()
+            for dim in DIMS:
+                d[dim] = max(1, min(5, int(d[dim])))
+            u = body["usage"]
+            cost += (u["prompt_tokens"] * pin + u["completion_tokens"] * pout) / 1e6
+            f.write(json.dumps({"judge": judge, "key": json.loads(r["custom_id"]), **d,
+                                "prompt_tokens": u["prompt_tokens"],
+                                "completion_tokens": u["completion_tokens"], "batch": True},
+                               ensure_ascii=False) + "\n")
+            n += 1
+    print(f"wrote {n} judgments, actual cost ${cost:.2f}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--judges", nargs="+", default=["gpt-4o"])
     ap.add_argument("--filter-run", type=int, default=None, help="only judge this run id")
+    ap.add_argument("--stratified", action="store_true",
+                    help="run 0 of every configuration, plus all runs of configurations "
+                         "the judge has already largely scored on runs > 0")
+    ap.add_argument("--batch", choices=["submit", "collect"], default=None)
+    ap.add_argument("--max-usd", type=float, default=4.0, help="spending cap for --batch submit")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--workers", type=int, default=8)
     args = ap.parse_args()
@@ -142,8 +214,27 @@ def main():
     jobs = [(jd, k) for jd in args.judges for k, r in recs.items()
             if (jd, *k) not in done
             and (args.filter_run is None or r.get("run", 0) == args.filter_run)]
+    if args.stratified:
+        from collections import Counter
+        later = Counter((jd, k[0], k[1]) for jd, *k in done if k[3] > 0)
+        full = {c for c, n in later.items() if n >= 100}
+        jobs = [(jd, k) for jd, k in jobs if k[3] == 0 or (jd, k[0], k[1]) in full]
     if args.limit:
         jobs = jobs[: args.limit]
+    if args.batch == "collect":
+        for jd in args.judges:
+            batch_collect(jd)
+        return
+    if args.batch == "submit":
+        empty = [(jd, k) for jd, k in jobs if not recs[k]["selected_courses"]]
+        with JUDGE_PATH.open("a") as f:
+            for jd, k in empty:
+                f.write(json.dumps({"judge": jd, "key": list(k), **{d: 1 for d in DIMS},
+                                    "empty": True, "prompt_tokens": 0, "completion_tokens": 0}) + "\n")
+        jobs = [j for j in jobs if j not in empty]
+        for jd in args.judges:
+            batch_submit(jd, [j for j in jobs if j[0] == jd], recs, args.max_usd)
+        return
     print(f"{len(jobs)} judgments to run ({len(done)} cached)")
 
     def work(job):
