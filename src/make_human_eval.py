@@ -28,6 +28,8 @@ SYSTEMS = [("retrieval_topk", "text-embedding-3-small"), ("multi_agent", "gpt-4o
            ("s1top5_kev4b", "kev-4b")]
 N_COMP = 16
 SEED = 7
+# one evaluation sheet per curator, same items in a different random order each
+RATERS = {"raymundo": "Raymundo", "fabiane": "Fabiane"}
 
 DIM_PT = {"relevance": "Relevância", "coverage": "Cobertura", "ordering": "Ordem",
           "concision": "Concisão", "overall": "Nota geral"}
@@ -78,7 +80,6 @@ def short(text: str, n: int = DESC_CHARS) -> str:
 
 def build():
     from openpyxl import Workbook
-    from openpyxl.comments import Comment
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.worksheet.datavalidation import DataValidation
 
@@ -147,24 +148,25 @@ def build():
 
     put("Avaliação de trilhas formativas", "", size=14)
     row += 1
-    put("Seu nome", "", fill=FILL)
-    name_row = row - 1
-    put("Progresso", f"=COUNT(avaliacao!E2:I{len(items) + 1})&\" de {5 * len(items)} notas preenchidas\"")
+    for tag, name in RATERS.items():
+        put(f"Progresso {name}",
+            f"=COUNT(aval_{tag}!E2:I{len(items) + 1})&\" de {5 * len(items)} notas preenchidas\"")
     row += 1
     put("Objetivo",
         "Você vai avaliar 80 trilhas formativas, sequências ordenadas de cursos do PlaforEdu propostas "
         "para desenvolver uma competência. As trilhas foram geradas por métodos diferentes, que não são "
         "identificados. Sua avaliação será comparada às notas de avaliadores automáticos.", height=42)
     put("Como fazer",
-        "1. Escreva seu nome acima.\n"
-        "2. Na aba 'avaliacao', leia em cada linha o objetivo da competência, a trilha proposta (na ordem) "
+        "1. Use SOMENTE a aba com o seu nome (" + ", ".join(f"'aval_{t}'" for t in RATERS)
+        + "). As abas têm as mesmas trilhas em ordens diferentes.\n"
+        "2. Em cada linha, leia em cada linha o objetivo da competência, a trilha proposta (na ordem) "
         "e a lista de cursos candidatos que o catálogo oferecia para essa competência.\n"
         "3. Dê uma nota inteira de 1 a 5 em cada uma das cinco colunas amarelas, seguindo as âncoras abaixo. "
         "Use a lista de opções da célula.\n"
         "4. Use 'Comentário' para justificar notas 1 ou 5 ou registrar qualquer problema (opcional).\n"
-        "5. Salve o arquivo com seu nome (ex.: avaliacao_trilhas_Maria.xlsx) e devolva por e-mail.", height=100)
+        "5. Salve o arquivo com seu nome (ex.: avaliacao_trilhas_Fabiane.xlsx) e devolva por e-mail.", height=100)
     put("Regras",
-        "• Avalie sozinho(a), sem conversar com outros avaliadores sobre as trilhas.\n"
+        "• Avalie sozinho(a), sem conversar com o outro avaliador sobre as trilhas e sem abrir a aba dele(a).\n"
         "• Avalie cada trilha independentemente das outras; trilhas da mesma competência aparecem em pontos diferentes.\n"
         "• Julgue cada dimensão separadamente; não repita a mesma nota em todas sem motivo.\n"
         "• A trilha só pode usar os cursos candidatos listados. Um curso marcado [NÃO EXISTE NO CATÁLOGO] é erro grave.\n"
@@ -191,47 +193,48 @@ def build():
         if h == "Trilha proposta":
             ws.row_dimensions[row].height = min(300, 14 * (str(v).count("\n") + 1) + 14 * len(str(v)) // 130)
         row += 1
-    ws.cell(name_row, 2).comment = Comment("Preencha com seu nome.", "pesquisa")
 
-    # ---------------- evaluation sheet ----------------
-    ev = wb.create_sheet("avaliacao")
-    cols = [("Item", 7), ("Objetivo da competência", 34), ("Trilha proposta (na ordem)", 70),
-            ("Cursos candidatos no catálogo", 38), *[(DIM_PT[d], 11) for d in DIMS], ("Comentário", 30)]
-    for j, (h, w) in enumerate(cols, 1):
-        c = ev.cell(1, j, h)
-        c.font, c.fill, c.alignment, c.border = H, HFILL, Alignment(wrap_text=True, vertical="center",
-                                                                    horizontal="center"), BOX
-        ev.column_dimensions[c.column_letter].width = w
-    ev.row_dimensions[1].height = 32
-    dv = DataValidation(type="whole", operator="between", formula1="1", formula2="5", allow_blank=True,
-                        showErrorMessage=True, errorTitle="Nota inválida",
-                        error="Use uma nota inteira de 1 a 5.")
-    dv.promptTitle, dv.prompt, dv.showInputMessage = "Nota", "Inteiro de 1 a 5", True
-    ev.add_data_validation(dv)
-    dv.add(f"E2:I{len(items) + 1}")
-    key = []
-    for i, r in enumerate(items, 1):
-        rr = i + 1
-        path, pool = path_text(r), pool_text(r)
-        vals = [f"T{i:03d}", clean(r["objective"]), path, pool, *[None] * 5, None]
-        for j, v in enumerate(vals, 1):
-            c = ev.cell(rr, j, v)
-            c.font = Font(name=F, size=9, bold=(j == 1))
-            c.border = BOX
-            c.alignment = CENTER if j == 1 or 5 <= j <= 9 else WRAP
-            if 5 <= j <= 10:
-                c.fill = FILL
-        lines = max(path.count("\n") + len(path) // 95, pool.count("\n") + 1, len(r["objective"]) // 45 + 1)
-        ev.row_dimensions[rr].height = min(409, 12 * lines + 8)
-        key.append({"item": f"T{i:03d}", "system": r["system"], "gen_model": r["gen_model"],
-                    "competency_id": r["competency_id"], "run": 0})
-    ev.freeze_panes = "B2"
-    ev.auto_filter.ref = f"A1:J{len(items) + 1}"
-    wb.calculation.fullCalcOnLoad = True  # progress formula has no cached value
+    def eval_sheet(ev, order):
+        cols = [("Item", 7), ("Objetivo da competência", 34), ("Trilha proposta (na ordem)", 70),
+                ("Cursos candidatos no catálogo", 38), *[(DIM_PT[d], 11) for d in DIMS], ("Comentário", 30)]
+        for j, (h, w) in enumerate(cols, 1):
+            c = ev.cell(1, j, h)
+            c.font, c.fill, c.alignment, c.border = H, HFILL, Alignment(wrap_text=True, vertical="center",
+                                                                        horizontal="center"), BOX
+            ev.column_dimensions[c.column_letter].width = w
+        ev.row_dimensions[1].height = 32
+        dv = DataValidation(type="whole", operator="between", formula1="1", formula2="5", allow_blank=True,
+                            showErrorMessage=True, errorTitle="Nota inválida",
+                            error="Use uma nota inteira de 1 a 5.")
+        dv.promptTitle, dv.prompt, dv.showInputMessage = "Nota", "Inteiro de 1 a 5", True
+        ev.add_data_validation(dv)
+        dv.add(f"E2:I{len(items) + 1}")
+        for rr, (i, r) in enumerate(order, 2):
+            path, pool = path_text(r), pool_text(r)
+            vals = [f"T{i:03d}", clean(r["objective"]), path, pool, *[None] * 5, None]
+            for j, v in enumerate(vals, 1):
+                c = ev.cell(rr, j, v)
+                c.font = Font(name=F, size=9, bold=(j == 1))
+                c.border = BOX
+                c.alignment = CENTER if j == 1 or 5 <= j <= 9 else WRAP
+                if 5 <= j <= 10:
+                    c.fill = FILL
+            lines = max(path.count("\n") + len(path) // 95, pool.count("\n") + 1, len(r["objective"]) // 45 + 1)
+            ev.row_dimensions[rr].height = min(409, 12 * lines + 8)
+        ev.freeze_panes = "B2"
+        ev.auto_filter.ref = f"A1:J{len(order) + 1}"
+
+    key = [{"item": f"T{i:03d}", "system": r["system"], "gen_model": r["gen_model"],
+            "competency_id": r["competency_id"], "run": 0} for i, r in enumerate(items, 1)]
+    for tag in RATERS:
+        order = list(enumerate(items, 1))
+        random.Random(f"{SEED}-{tag}").shuffle(order)
+        eval_sheet(wb.create_sheet(f"aval_{tag}"), order)
+    wb.calculation.fullCalcOnLoad = True  # progress formulas have no cached value
     xlsx = OUT / "avaliacao_trilhas.xlsx"
     wb.save(xlsx)
     pd.DataFrame(key).to_csv(OUT / "chave_NAO_ENVIAR.csv", index=False)
-    print(f"{len(items)} items over {len(sample)} competencies -> {xlsx}")
+    print(f"{len(items)} items over {len(sample)} competencies, sheets for {', '.join(RATERS)} -> {xlsx}")
 
 
 def score():
@@ -242,12 +245,14 @@ def score():
     if not filled:
         sys.exit(f"no filled workbooks in {OUT / 'filled'}")
     hs = []
-    for i, f in enumerate(filled):
-        h = pd.read_excel(f, sheet_name="avaliacao")
-        h = h.rename(columns={"Item": "item", **{v: k for k, v in DIM_PT.items()}})[["item", *DIMS]].dropna()
-        h["rater"] = i
-        hs.append(h)
-    h = pd.concat(hs).merge(key, on="item")
+    for f in filled:  # each curator may return the whole workbook; keep the filled rows
+        for tag in RATERS:
+            h = pd.read_excel(f, sheet_name=f"aval_{tag}")
+            h = h.rename(columns={"Item": "item", **{v: k for k, v in DIM_PT.items()}})[["item", *DIMS]].dropna()
+            h["rater"] = tag
+            hs.append(h)
+    h = pd.concat(hs).drop_duplicates(["item", "rater"], keep="last").merge(key, on="item")
+    print(h.groupby("rater").size().rename("rated items"))
     df = load()
     m = h.merge(df, on=["system", "gen_model", "competency_id", "run"], suffixes=("_h", ""))
     for d in DIMS:
@@ -255,10 +260,12 @@ def score():
         print(f"{d:10} rho(human, judges)={stats.spearmanr(hm[f'{d}_h'], hm[d])[0]:.2f}  "
               f"rho(human, G)={stats.spearmanr(hm[f'{d}_h'], hm[f'{d}_G'])[0]:.2f}  "
               f"rho(human, C)={stats.spearmanr(hm[f'{d}_h'], hm[f'{d}_C'])[0]:.2f}")
-    if len(filled) >= 2:
-        p = h.pivot_table(index="item", columns="rater", values="overall")
-        print("inter-curator alpha (overall, raters 0-1):",
-              round(kripp_alpha_ordinal(p[0].round(), p[1].round()), 2))
+    p = h.pivot_table(index="item", columns="rater", values=DIMS).dropna()
+    if len(p):
+        a, b = RATERS
+        for d in DIMS:
+            print(f"inter-curator alpha ({d}):",
+                  round(kripp_alpha_ordinal(p[(d, a)].round(), p[(d, b)].round()), 2))
     sysh = m.groupby("system")[["overall_h", "overall"]].mean()
     print(sysh.round(2))
 
