@@ -163,15 +163,15 @@ def build():
         "e a lista de cursos candidatos que o catálogo oferecia para essa competência.\n"
         "3. Dê uma nota inteira de 1 a 5 em cada uma das cinco colunas amarelas, seguindo as âncoras abaixo. "
         "Use a lista de opções da célula.\n"
-        "4. Use 'Comentário' para justificar notas 1 ou 5 ou registrar qualquer problema (opcional).\n"
-        "5. Salve o arquivo com seu nome (ex.: avaliacao_trilhas_Fabiane.xlsx) e devolva por e-mail.", height=100)
+        "4. Use 'Comentário' para justificar notas 1 ou 5 ou registrar qualquer problema (opcional).", height=86)
     put("Regras",
         "• Avalie sozinho(a), sem conversar com o outro avaliador sobre as trilhas e sem abrir a aba dele(a).\n"
         "• Avalie cada trilha independentemente das outras; trilhas da mesma competência aparecem em pontos diferentes.\n"
         "• Julgue cada dimensão separadamente; não repita a mesma nota em todas sem motivo.\n"
         "• A trilha só pode usar os cursos candidatos listados. Um curso marcado [NÃO EXISTE NO CATÁLOGO] é erro grave.\n"
         "• As descrições dos cursos estão resumidas; o nome e o início da descrição bastam para julgar.\n"
-        "• Não é preciso fazer tudo de uma vez: salve e continue depois. Tempo estimado: 3 a 5 min por trilha.",
+        "• Não é preciso fazer tudo de uma vez: as notas ficam salvas e você pode continuar depois. "
+        "Tempo estimado: 3 a 5 min por trilha.",
         height=110)
     row += 1
     put("Critérios de avaliação", "", size=12)
